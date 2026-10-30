@@ -77,6 +77,7 @@ class LarkRelayServiceTest(unittest.TestCase):
         self.service.process_event(self.event())
         self.assertEqual(len(self.cli.replies), 2)
         self.assertEqual(self.cli.replies[0][2], self.cli.replies[1][2])
+        self.assertLessEqual(len(self.cli.replies[0][2]), 50)
 
 
 if __name__ == "__main__":

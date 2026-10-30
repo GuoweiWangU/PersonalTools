@@ -97,7 +97,7 @@ class LarkRelayService:
         reply_target = event["message_id"]
         delivery_key = hashlib.sha256(
             f"relay-result:{event.get('event_id') or reply_target}".encode()
-        ).hexdigest()
+        ).hexdigest()[:32]
         self.cli.reply(reply_target, encode_relay_message(response), delivery_key)
         return response
 
