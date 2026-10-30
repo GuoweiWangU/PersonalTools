@@ -128,8 +128,9 @@ class ACPClient:
                  log_handler: Callable[[str], None] | None = None,
                  store: ControlStore | None = None, task_id: str | None = None,
                  turn_id: str | None = None):
+        executable = str(Path(command).resolve()) if "/" in command else command
         self.process = subprocess.Popen(
-            [command, "acp"], cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            [executable, "acp"], cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True,
         )
         assert self.process.stdin is not None

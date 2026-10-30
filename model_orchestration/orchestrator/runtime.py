@@ -60,14 +60,15 @@ class AgentRuntime:
 
     def create_task(self, instructions: str, cwd: Path | None = None, worker_id: str = "agent",
                     goal_id: str | None = None, step_id: str | None = None,
-                    reply_to_message_id: str | None = None) -> tuple[dict, dict]:
+                    reply_to_message_id: str | None = None, autostart: bool = True) -> tuple[dict, dict]:
         cwd = (cwd or self.roots[0]).resolve()
         if not any(cwd == root or cwd.is_relative_to(root) for root in self.roots):
             raise PermissionError(f"Task cwd is outside authorized roots: {cwd}")
         task, turn = self.store.create_task(
             instructions, worker_id, cwd, goal_id, step_id, reply_to_message_id,
         )
-        self.submit(turn["turn_id"])
+        if autostart:
+            self.submit(turn["turn_id"])
         return task, turn
 
     def continue_task(self, task_id: str, instructions: str,
@@ -179,12 +180,13 @@ class AgentRuntime:
     def _schedule_ready(self, goal_id: str) -> None:
         for step in self.store.ready_steps(goal_id):
             short_id = step["step_id"].split(":", 1)[1]
-            task, _ = self.create_task(
+            task, turn = self.create_task(
                 step["instructions"], worker_id=step["worker_id"], goal_id=goal_id,
-                step_id=step["step_id"],
+                step_id=step["step_id"], autostart=False,
             )
             self.store.bind_step_task(step["step_id"], task["task_id"])
             self.store.event("step_scheduled", f"Scheduled {short_id} as {task['task_id']}", task["task_id"])
+            self.submit(turn["turn_id"])
 
     def decide_approval(self, task_id: str, approved: bool, reason: str = "") -> dict:
         pending = self.store.pending_approval(task_id)
