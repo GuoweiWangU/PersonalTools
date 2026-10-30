@@ -107,6 +107,7 @@ class ACPTerminal:
         self.size = 0
         self.limit = 1024 * 1024
         self.lock = threading.Lock()
+        self.reader_thread: threading.Thread | None = None
 
     def append(self, text: str) -> None:
         with self.lock:
@@ -312,7 +313,8 @@ class ACPClient:
                 process.stdout.close()
                 if self.store:
                     self.store.finish_external_run(run_id, code)
-            threading.Thread(target=read_output, daemon=True).start()
+            terminal.reader_thread = threading.Thread(target=read_output, daemon=True)
+            terminal.reader_thread.start()
             return {"terminalId": terminal_id}
         terminal = self.terminals.get(params.get("terminalId"))
         if terminal is None:
@@ -332,6 +334,8 @@ class ACPClient:
             if terminal.process.poll() is None:
                 terminal.process.terminate()
             terminal.process.wait(timeout=15)
+            if terminal.reader_thread:
+                terminal.reader_thread.join(timeout=15)
             self.terminals.pop(terminal.terminal_id, None)
             return {}
         raise ValueError(f"Unsupported terminal method: {method}")

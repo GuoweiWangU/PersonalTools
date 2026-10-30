@@ -50,7 +50,7 @@ for line in sys.stdin:
 class KimiCodeWorkerTest(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory(dir="model_orchestration")
-        self.root = Path(self.tempdir.name)
+        self.root = Path(self.tempdir.name).resolve()
         self.log = self.root / "calls.log"
         self.executable = self.root / "fake-kimi"
         self.executable.write_text(FAKE_ACP.replace("__LOG__", str(self.log)), encoding="utf-8")

@@ -68,7 +68,7 @@ for line in sys.stdin:
 class ACPExecutionTest(unittest.TestCase):
     def test_permission_terminal_and_filesystem_roundtrip(self):
         with tempfile.TemporaryDirectory(dir="model_orchestration") as tempdir:
-            root = Path(tempdir)
+            root = Path(tempdir).resolve()
             executable = root / "fake-kimi-exec"
             executable.write_text(FAKE_EXEC_ACP.replace("__ROOT__", str(root)), encoding="utf-8")
             executable.chmod(0o755)
