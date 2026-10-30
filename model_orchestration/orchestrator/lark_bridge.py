@@ -104,6 +104,7 @@ class LarkRelayService:
 
 def build_service(args: argparse.Namespace) -> LarkRelayService:
     from .acp_worker import KimiCodeWorker
+    from .workers import OpenAICompatibleWorker
 
     controller = Orchestrator(args.db, args.artifacts)
     workers = {}
@@ -118,6 +119,13 @@ def build_service(args: argparse.Namespace) -> LarkRelayService:
             if not args.acp_cwd:
                 raise ValueError("--acp-cwd is required for an ACP worker")
             workers[name] = KimiCodeWorker(args.acp_cwd, args.acp_command, args.acp_timeout)
+        elif kind == "openai":
+            if not args.openai_base_url or not args.openai_model:
+                raise ValueError("--openai-base-url and --openai-model are required")
+            workers[name] = OpenAICompatibleWorker(
+                args.openai_base_url, args.openai_model,
+                args.openai_api_key_env, args.openai_timeout,
+            )
         else:
             raise ValueError(f"Unsupported worker type: {kind}")
     bridge = RelayBridge(args.bridge_id, controller, workers)
@@ -131,13 +139,17 @@ def main() -> None:
     parser.add_argument("--bridge-id", required=True)
     parser.add_argument("--chat-id", action="append", required=True)
     parser.add_argument("--sender-open-id", action="append", required=True)
-    parser.add_argument("--worker", action="append", help="NAME, NAME=mock, or NAME=acp; repeatable")
+    parser.add_argument("--worker", action="append", help="NAME=mock|acp|openai; repeatable")
     parser.add_argument("--db", type=Path, default=Path("runtime/relay.db"))
     parser.add_argument("--artifacts", type=Path, default=Path("runtime/artifacts"))
     parser.add_argument("--lark-cli", default="lark-cli")
     parser.add_argument("--acp-cwd", type=Path, help="Working directory for Kimi Code sessions")
     parser.add_argument("--acp-command", default="kimi")
     parser.add_argument("--acp-timeout", type=int, default=600)
+    parser.add_argument("--openai-base-url", default=os.environ.get("WORKER_BASE_URL"))
+    parser.add_argument("--openai-model", default=os.environ.get("WORKER_MODEL"))
+    parser.add_argument("--openai-api-key-env", default="WORKER_API_KEY")
+    parser.add_argument("--openai-timeout", type=int, default=600)
     parser.add_argument("--timeout", help="For example 10m; omit only for an interactive long run")
     parser.add_argument("--max-events", type=int, default=0)
     args = parser.parse_args()

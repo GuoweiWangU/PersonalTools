@@ -106,6 +106,29 @@ PYTHONPATH=model_orchestration python3 -m orchestrator.cli run TASK_ID \
   --worker openai --base-url "$WORKER_BASE_URL" --model "$WORKER_MODEL"
 ```
 
+### GLM Worker
+
+GLM 使用 OpenAI 兼容接口，Key 只从环境变量读取。以下为云端配置示例：
+
+```bash
+read -s -p "GLM API Key: " GLM_API_KEY; echo
+export GLM_API_KEY
+
+PYTHONPATH=model_orchestration python3 -m orchestrator.lark_bridge \
+  --bridge-id cloud-desktop-1 \
+  --chat-id oc_xxx \
+  --sender-open-id ou_xxx \
+  --worker kimi_code=acp \
+  --worker glm=openai \
+  --acp-cwd /absolute/path/to/PersonalTools \
+  --openai-base-url https://open.bigmodel.cn/api/paas/v4 \
+  --openai-model glm-5.3 \
+  --openai-api-key-env GLM_API_KEY \
+  --timeout 30m
+```
+
+任务中的 `assigned_worker` 设为 `glm` 即调用 GLM。模型 ID 应与账号实际开通情况一致；API Key 不要写入命令行、仓库或飞书消息。
+
 ### Kimi Code ACP Worker
 
 前置条件：云端已安装 `kimi`，并在交互式 Kimi Code 中完成 `/login`。每个任务会启动独立的 `kimi acp` 进程和会话，任务结束后清理进程，不共享其他任务上下文。

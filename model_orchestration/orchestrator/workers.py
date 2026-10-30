@@ -69,8 +69,7 @@ class OpenAICompatibleWorker:
                 {"role": "system", "content": system},
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
-            "temperature": 0,
-            "response_format": {"type": "json_object"},
+            "temperature": 0.6,
         }).encode("utf-8")
         request = urllib.request.Request(
             self.base_url + "/chat/completions", data=body,
