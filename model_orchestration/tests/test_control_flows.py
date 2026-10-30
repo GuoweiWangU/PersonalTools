@@ -62,7 +62,7 @@ class ControlFlowTest(unittest.TestCase):
             runtime.decide_approval(task["task_id"], True)
             self.wait_for(lambda: self.store.get_turn(turn["turn_id"])["status"] == "succeeded")
         finally:
-            runtime.shutdown()
+            runtime.shutdown(wait=True)
 
     def test_cancel_stays_cancelled(self):
         agent = BlockingAgent()
@@ -74,7 +74,7 @@ class ControlFlowTest(unittest.TestCase):
             self.wait_for(lambda: self.store.get_turn(turn["turn_id"])["status"] == "cancelled")
             self.assertEqual(self.store.get_task(task["task_id"])["status"], "cancelled")
         finally:
-            runtime.shutdown()
+            runtime.shutdown(wait=True)
 
     def test_queued_turn_is_resumed_after_restart(self):
         task, turn = self.store.create_task("queued before restart", "agent", self.root)
@@ -82,7 +82,7 @@ class ControlFlowTest(unittest.TestCase):
         try:
             self.wait_for(lambda: self.store.get_turn(turn["turn_id"])["status"] == "succeeded")
         finally:
-            runtime.shutdown()
+            runtime.shutdown(wait=True)
 
 
 if __name__ == "__main__":

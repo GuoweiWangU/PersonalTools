@@ -41,7 +41,7 @@ class AgentServiceTest(unittest.TestCase):
         self.service.runtime = self.runtime
 
     def tearDown(self):
-        self.runtime.shutdown()
+        self.runtime.shutdown(wait=True)
         self.tempdir.cleanup()
 
     def event(self, event_id, content):

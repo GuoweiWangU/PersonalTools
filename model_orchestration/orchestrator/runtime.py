@@ -202,5 +202,5 @@ class AgentRuntime:
                 cancel(turn_id)
         return turn_ids
 
-    def shutdown(self) -> None:
-        self.pool.shutdown(wait=False, cancel_futures=True)
+    def shutdown(self, wait: bool = False) -> None:
+        self.pool.shutdown(wait=wait, cancel_futures=not wait)

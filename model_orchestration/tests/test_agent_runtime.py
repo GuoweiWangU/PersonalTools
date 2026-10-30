@@ -31,7 +31,7 @@ class AgentRuntimeTest(unittest.TestCase):
         )
 
     def tearDown(self):
-        self.runtime.shutdown()
+        self.runtime.shutdown(wait=True)
         self.tempdir.cleanup()
 
     def wait_for(self, predicate, timeout=5):
