@@ -106,4 +106,21 @@ PYTHONPATH=model_orchestration python3 -m orchestrator.cli run TASK_ID \
   --worker openai --base-url "$WORKER_BASE_URL" --model "$WORKER_MODEL"
 ```
 
-Kimi Code Worker 计划通过 `kimi acp` 接入，每个任务创建独立会话并映射同一结果契约。当前尚未实现真实 ACP 适配器，Mock 联调成功不代表已经能控制 Kimi Code。
+### Kimi Code ACP Worker
+
+前置条件：云端已安装 `kimi`，并在交互式 Kimi Code 中完成 `/login`。每个任务会启动独立的 `kimi acp` 进程和会话，任务结束后清理进程，不共享其他任务上下文。
+
+```bash
+PYTHONPATH=model_orchestration python3 -m orchestrator.lark_bridge \
+  --bridge-id cloud-desktop-1 \
+  --chat-id oc_xxx \
+  --sender-open-id ou_xxx \
+  --worker mock \
+  --worker kimi_code=acp \
+  --acp-cwd /absolute/path/to/PersonalTools \
+  --acp-command kimi \
+  --acp-timeout 600 \
+  --timeout 30m
+```
+
+任务中的 `assigned_worker` 设为 `kimi_code` 即调用 Kimi Code，设为 `mock` 仍执行 Mock。当前 ACP Worker 面向只读分析任务：提示词禁止命令执行、文件修改和外部访问，客户端不开放文件系统与终端能力，并默认拒绝权限请求。后续如需开放写文件或命令执行，必须单独设计权限与审批策略。

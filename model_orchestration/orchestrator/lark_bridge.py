@@ -102,12 +102,25 @@ class LarkRelayService:
         return response
 
 
-def build_mock_service(args: argparse.Namespace) -> LarkRelayService:
+def build_service(args: argparse.Namespace) -> LarkRelayService:
+    from .acp_worker import KimiCodeWorker
+
     controller = Orchestrator(args.db, args.artifacts)
-    worker_names = args.worker or ["worker_a"]
-    bridge = RelayBridge(
-        args.bridge_id, controller, {worker_name: MockWorker() for worker_name in worker_names}
-    )
+    workers = {}
+    for specification in args.worker or ["mock"]:
+        name, separator, kind = specification.partition("=")
+        kind = kind if separator else "mock"
+        if not name:
+            raise ValueError("Worker name must be non-empty")
+        if kind == "mock":
+            workers[name] = MockWorker()
+        elif kind == "acp":
+            if not args.acp_cwd:
+                raise ValueError("--acp-cwd is required for an ACP worker")
+            workers[name] = KimiCodeWorker(args.acp_cwd, args.acp_command, args.acp_timeout)
+        else:
+            raise ValueError(f"Unsupported worker type: {kind}")
+    bridge = RelayBridge(args.bridge_id, controller, workers)
     return LarkRelayService(
         bridge, LarkCLI(args.lark_cli), set(args.chat_id), set(args.sender_open_id)
     )
@@ -118,14 +131,17 @@ def main() -> None:
     parser.add_argument("--bridge-id", required=True)
     parser.add_argument("--chat-id", action="append", required=True)
     parser.add_argument("--sender-open-id", action="append", required=True)
-    parser.add_argument("--worker", action="append", help="Mock worker name; repeatable")
+    parser.add_argument("--worker", action="append", help="NAME, NAME=mock, or NAME=acp; repeatable")
     parser.add_argument("--db", type=Path, default=Path("runtime/relay.db"))
     parser.add_argument("--artifacts", type=Path, default=Path("runtime/artifacts"))
     parser.add_argument("--lark-cli", default="lark-cli")
+    parser.add_argument("--acp-cwd", type=Path, help="Working directory for Kimi Code sessions")
+    parser.add_argument("--acp-command", default="kimi")
+    parser.add_argument("--acp-timeout", type=int, default=600)
     parser.add_argument("--timeout", help="For example 10m; omit only for an interactive long run")
     parser.add_argument("--max-events", type=int, default=0)
     args = parser.parse_args()
-    service = build_mock_service(args)
+    service = build_service(args)
     for event in service.cli.events(timeout=args.timeout, max_events=args.max_events):
         response = service.process_event(event)
         if response is not None:
