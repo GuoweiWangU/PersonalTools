@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
+import signal
 import subprocess
 import sys
 import threading
@@ -52,14 +54,24 @@ class PersistentKimiAgent:
         self.client_lock = threading.Lock()
 
     def cancel_turn(self, turn_id: str) -> None:
+        for run in self.store.running_external_runs(turn_id):
+            try:
+                os.killpg(run["pid"], signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            self.store.finish_external_run(run["run_id"], None, status="cancelled")
         with self.client_lock:
             client = self.clients.get(turn_id)
         if client:
             client.cancel()
 
-    def mcp_servers(self, roots: list[Path], ssh_hosts: set[str]) -> list[dict]:
+    def mcp_servers(self, roots: list[Path], ssh_hosts: set[str],
+                    task_id: str, turn_id: str) -> list[dict]:
         package_root = Path(__file__).resolve().parent.parent
-        args = ["-m", "orchestrator.controlled_mcp", "--db", str(self.store.db_path)]
+        args = [
+            "-m", "orchestrator.controlled_mcp", "--db", str(self.store.db_path),
+            "--task-id", task_id, "--turn-id", turn_id,
+        ]
         for root in roots:
             args.extend(["--root", str(root.resolve())])
         for host in sorted(ssh_hosts):
@@ -73,7 +85,7 @@ class PersistentKimiAgent:
                  approval_handler: Callable[[dict], bool],
                  log_handler: Callable[[str], None] | None = None) -> dict:
         policy = ExecutionPolicy(roots, ssh_hosts)
-        mcp_servers = self.mcp_servers(roots, ssh_hosts)
+        mcp_servers = self.mcp_servers(roots, ssh_hosts, task["task_id"], turn["turn_id"])
         client = ACPClient(
             self.command, Path(task["cwd"]), self.timeout, policy=policy,
             approval_handler=approval_handler, log_handler=log_handler,

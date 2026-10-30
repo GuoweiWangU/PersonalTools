@@ -561,9 +561,17 @@ class ControlStore:
                             status: str = "finished") -> None:
         with self.connect() as db:
             db.execute(
-                "UPDATE external_runs SET status=?,exit_code=?,finished_at=? WHERE run_id=?",
+                "UPDATE external_runs SET status=?,exit_code=?,finished_at=? "
+                "WHERE run_id=? AND status='running'",
                 (status, exit_code, utc_now(), run_id),
             )
+
+    def running_external_runs(self, turn_id: str) -> list[dict]:
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT * FROM external_runs WHERE turn_id=? AND status='running'", (turn_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def command_response(self, event_id: str) -> dict | None:
         with self.connect() as db:

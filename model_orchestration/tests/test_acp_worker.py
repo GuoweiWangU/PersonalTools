@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -91,6 +93,32 @@ class KimiCodeWorkerTest(unittest.TestCase):
         self.assertEqual(calls.count("session/new:1"), 1)
         self.assertEqual(calls.count("session/load:1"), 1)
         self.assertEqual(calls.count("session/prompt:0"), 2)
+
+    def test_cancel_turn_terminates_controlled_process_group(self):
+        store = ControlStore(self.root / "control.db")
+        agent = PersistentKimiAgent(store, str(self.executable), timeout=5)
+        config = agent.mcp_servers([self.root], set(), "TASK-cancel-test", "TURN-cancel-test")
+        self.assertIn("TASK-cancel-test", config[0]["args"])
+        self.assertIn("TURN-cancel-test", config[0]["args"])
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            cwd=self.root, start_new_session=True,
+        )
+        store.record_external_run(
+            "RUN-cancel-test", "TASK-cancel-test", "TURN-cancel-test",
+            process.pid, ["sleep", "30"], self.root,
+        )
+        try:
+            agent.cancel_turn("TURN-cancel-test")
+            self.assertEqual(process.wait(timeout=5), -15)
+            self.assertEqual(store.running_external_runs("TURN-cancel-test"), [])
+            with store.connect() as db:
+                row = db.execute("SELECT status FROM external_runs WHERE run_id='RUN-cancel-test'").fetchone()
+            self.assertEqual(row["status"], "cancelled")
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
 
 
 if __name__ == "__main__":

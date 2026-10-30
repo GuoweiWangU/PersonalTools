@@ -14,9 +14,12 @@ from .policy import ExecutionPolicy, normalize_command
 
 
 class ControlledTools:
-    def __init__(self, roots: list[Path], ssh_hosts: set[str], db_path: Path):
+    def __init__(self, roots: list[Path], ssh_hosts: set[str], db_path: Path,
+                 task_id: str = "MCP", turn_id: str = "MCP"):
         self.policy = ExecutionPolicy(roots, ssh_hosts)
         self.store = ControlStore(db_path)
+        self.task_id = task_id
+        self.turn_id = turn_id
         self.runs_root = db_path.resolve().parent / "controlled-runs"
         self.runs_root.mkdir(parents=True, exist_ok=True)
 
@@ -78,7 +81,7 @@ class ControlledTools:
             command, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True, start_new_session=True,
         )
-        self.store.record_external_run(run_id, "MCP", "MCP", process.pid, command, cwd)
+        self.store.record_external_run(run_id, self.task_id, self.turn_id, process.pid, command, cwd)
         try:
             stdout, stderr = process.communicate(
                 timeout=min(int(args.get("timeout", 300)), 3600),
@@ -103,7 +106,7 @@ class ControlledTools:
                 command, cwd=cwd, stdin=subprocess.DEVNULL, stdout=output,
                 stderr=subprocess.STDOUT, start_new_session=True,
             )
-        self.store.record_external_run(run_id, "MCP", "MCP", process.pid, command, cwd)
+        self.store.record_external_run(run_id, self.task_id, self.turn_id, process.pid, command, cwd)
 
         def wait_for_exit() -> None:
             self.store.finish_external_run(run_id, process.wait())
@@ -183,8 +186,12 @@ def main() -> None:
     parser.add_argument("--root", type=Path, action="append", required=True)
     parser.add_argument("--ssh-host", action="append", default=[])
     parser.add_argument("--db", type=Path, required=True)
+    parser.add_argument("--task-id", default="MCP")
+    parser.add_argument("--turn-id", default="MCP")
     args = parser.parse_args()
-    MCPServer(ControlledTools(args.root, set(args.ssh_host), args.db)).serve()
+    MCPServer(ControlledTools(
+        args.root, set(args.ssh_host), args.db, args.task_id, args.turn_id,
+    )).serve()
 
 
 if __name__ == "__main__":

@@ -87,7 +87,7 @@
 
 当前 Kimi Code 的内置 Bash 在 ACP 模式下可能只返回执行成功提示而不返回 stdout，且命令副作用未可靠落盘。因此 `/agent` 的 shell 命令统一使用 `controlled_exec`，分钟级任务使用 `controlled_start`／`controlled_run_status`；`controlled_read`／`controlled_write` 用于文件落盘和回读验证。`/kimi` 只读短任务不挂载这些执行工具。
 
-MCP 执行器复用授权目录、命令与 SSH 白名单策略，记录真实子进程 PID、退出码和输出；长任务日志位于运行数据库旁的 `controlled-runs/`。首版 MCP 对高风险命令直接拒绝，不进入飞书审批；ACP 原生工具仍按上述审批规则处理。执行器不是操作系统沙箱。
+MCP 执行器复用授权目录、命令与 SSH 白名单策略，记录真实子进程 PID、退出码和输出；长任务日志位于运行数据库旁的 `controlled-runs/`。每次运行绑定实际 Task／Turn，`/cancel` 会终止对应进程组并保留 `cancelled` 状态。首版 MCP 对高风险命令直接拒绝，不进入飞书审批；ACP 原生工具仍按上述审批规则处理。执行器不是操作系统沙箱。
 
 ## 云端安装与升级
 
