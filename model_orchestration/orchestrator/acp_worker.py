@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import queue
 import subprocess
+import sys
 import threading
 import uuid
 from collections import deque
@@ -56,10 +57,23 @@ class PersistentKimiAgent:
         if client:
             client.cancel()
 
+    def mcp_servers(self, roots: list[Path], ssh_hosts: set[str]) -> list[dict]:
+        package_root = Path(__file__).resolve().parent.parent
+        args = ["-m", "orchestrator.controlled_mcp", "--db", str(self.store.db_path)]
+        for root in roots:
+            args.extend(["--root", str(root.resolve())])
+        for host in sorted(ssh_hosts):
+            args.extend(["--ssh-host", host])
+        return [{
+            "name": "personal-tools-controlled", "command": sys.executable, "args": args,
+            "env": [{"name": "PYTHONPATH", "value": str(package_root)}],
+        }]
+
     def run_turn(self, task: dict, turn: dict, roots: list[Path], ssh_hosts: set[str],
                  approval_handler: Callable[[dict], bool],
                  log_handler: Callable[[str], None] | None = None) -> dict:
         policy = ExecutionPolicy(roots, ssh_hosts)
+        mcp_servers = self.mcp_servers(roots, ssh_hosts)
         client = ACPClient(
             self.command, Path(task["cwd"]), self.timeout, policy=policy,
             approval_handler=approval_handler, log_handler=log_handler,
@@ -74,13 +88,17 @@ class PersistentKimiAgent:
                 agent_caps = capabilities.get("agentCapabilities", {})
                 if not agent_caps.get("loadSession", False):
                     raise RuntimeError("Kimi Code does not advertise ACP loadSession; refusing to replace session")
-                client.load_session(session_id)
+                client.load_session(session_id, mcp_servers)
             else:
-                session_id = client.new_session()
+                session_id = client.new_session(mcp_servers)
                 self.store.save_session(task["task_id"], session_id)
             prompt = (
                 "You are a controlled long-running task worker. Continue the existing task context. "
                 "Perform the requested work using available tools within the authorized workspace. "
+                "For every shell command, use the MCP tool controlled_exec instead of the built-in Bash tool; "
+                "controlled_exec returns real stdout/stderr and persists side effects. Use controlled_start "
+                "and controlled_run_status for long jobs. Use controlled_read/controlled_write when file "
+                "verification is needed. Do not use the built-in Bash tool because its ACP output is unreliable. "
                 "Do not claim an action or artifact unless you verified it. For long external jobs, "
                 "record their PID/run identifier and actual output path. Finish this turn with only one "
                 "JSON object containing status (succeeded|blocked|failed), summary (string), artifacts "
@@ -351,15 +369,17 @@ class ACPClient:
             },
         })
 
-    def new_session(self) -> str:
-        result = self._request("session/new", {"cwd": str(self.cwd), "mcpServers": []})
+    def new_session(self, mcp_servers: list[dict] | None = None) -> str:
+        result = self._request("session/new", {
+            "cwd": str(self.cwd), "mcpServers": mcp_servers or [],
+        })
         self.active_session = result["sessionId"]
         return self.active_session
 
-    def load_session(self, session_id: str) -> None:
+    def load_session(self, session_id: str, mcp_servers: list[dict] | None = None) -> None:
         self.message_parts = []
         self._request("session/load", {
-            "sessionId": session_id, "cwd": str(self.cwd), "mcpServers": [],
+            "sessionId": session_id, "cwd": str(self.cwd), "mcpServers": mcp_servers or [],
         })
         self.message_parts = []
         self.active_session = session_id

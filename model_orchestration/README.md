@@ -83,6 +83,12 @@
 - 不支持或无法识别的工具默认拒绝；审批只选择 `allow_once`，不自动授予永久权限。
 - ACP 策略检查不是操作系统沙箱。云端运行账号本身的 OS 权限仍需按最小权限配置，高风险自动化应先小范围验证。
 
+### 受控 MCP 执行器
+
+当前 Kimi Code 的内置 Bash 在 ACP 模式下可能只返回执行成功提示而不返回 stdout，且命令副作用未可靠落盘。因此 `/agent` 的 shell 命令统一使用 `controlled_exec`，分钟级任务使用 `controlled_start`／`controlled_run_status`；`controlled_read`／`controlled_write` 用于文件落盘和回读验证。`/kimi` 只读短任务不挂载这些执行工具。
+
+MCP 执行器复用授权目录、命令与 SSH 白名单策略，记录真实子进程 PID、退出码和输出；长任务日志位于运行数据库旁的 `controlled-runs/`。首版 MCP 对高风险命令直接拒绝，不进入飞书审批；ACP 原生工具仍按上述审批规则处理。执行器不是操作系统沙箱。
+
 ## 云端安装与升级
 
 前置条件：云端已配置 `lark-cli` Bot、Kimi Code 登录和 GLM 环境变量；飞书应用已启用群消息事件。

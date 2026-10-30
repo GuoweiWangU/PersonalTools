@@ -17,7 +17,8 @@ for line in sys.stdin:
     request_id = request.get("id")
     if method in {"session/new", "session/load", "session/prompt"}:
         with open("__LOG__", "a") as handle:
-            handle.write(method + "\n")
+            servers = len(request.get("params", {}).get("mcpServers", []))
+            handle.write(method + ":" + str(servers) + "\n")
     if method == "initialize":
         result = {"protocolVersion": 1, "agentInfo": {"name": "fake-kimi", "version": "1"},
                   "agentCapabilities": {"loadSession": True}}
@@ -87,9 +88,9 @@ class KimiCodeWorkerTest(unittest.TestCase):
         self.assertEqual(second_result["status"], "succeeded")
         self.assertEqual(store.get_task(task["task_id"])["session_id"], "session-test")
         calls = self.log.read_text().splitlines()
-        self.assertEqual(calls.count("session/new"), 1)
-        self.assertEqual(calls.count("session/load"), 1)
-        self.assertEqual(calls.count("session/prompt"), 2)
+        self.assertEqual(calls.count("session/new:1"), 1)
+        self.assertEqual(calls.count("session/load:1"), 1)
+        self.assertEqual(calls.count("session/prompt:0"), 2)
 
 
 if __name__ == "__main__":
