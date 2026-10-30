@@ -147,3 +147,35 @@ PYTHONPATH=model_orchestration python3 -m orchestrator.lark_bridge \
 ```
 
 任务中的 `assigned_worker` 设为 `kimi_code` 即调用 Kimi Code，设为 `mock` 仍执行 Mock。当前 ACP Worker 面向只读分析任务：提示词禁止命令执行、文件修改和外部访问，客户端不开放文件系统与终端能力，并默认拒绝权限请求。后续如需开放写文件或命令执行，必须单独设计权限与审批策略。
+
+## 飞书自然语言命令
+
+启动包含相应 Worker 的 Bridge 后，在允许的群中直接发送：
+
+```text
+/glm 你的任务内容
+/kimi 你的任务内容
+/mock 测试任务
+/help
+```
+
+命令前可以 @机器人，也可以不 @。Bridge 自动生成任务 ID、幂等键和受控输入引用，执行后返回可读摘要；原有 JSON 协议仍然保留，适合程序化调用和精细控制。
+
+## 云端常驻服务
+
+Linux 用户可以安装 systemd 用户服务，避免保留前台终端。先停止手工启动的 Bridge，再执行：
+
+```bash
+CHAT_ID=oc_xxx SENDER_OPEN_ID=ou_xxx \
+  bash model_orchestration/deploy/install_user_service.sh
+```
+
+安装脚本在 `~/.config/systemd/user/` 生成服务并立即启动。服务通过登录 Shell 读取现有环境，因此 `GLM_API_KEY` 必须在该环境中可见。常用运维命令：
+
+```bash
+systemctl --user status personal-tools-relay.service
+systemctl --user restart personal-tools-relay.service
+journalctl --user -u personal-tools-relay.service -n 100 --no-pager
+```
+
+服务异常会自动重启。用户登录后会自动启动；如需未登录也保持运行，可由管理员配置 lingering。日常发任务不再需要终端，只有代码更新、模型配置或凭证变更时才需要运维。

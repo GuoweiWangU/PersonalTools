@@ -47,7 +47,7 @@ class LarkCLI:
         if max_events:
             command.extend(["--max-events", str(max_events)])
         process = subprocess.Popen(
-            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, env=self._environment(),
         )
         assert process.stdout is not None and process.stderr is not None
@@ -85,20 +85,38 @@ class LarkRelayService:
         self.allowed_sender_ids = allowed_sender_ids
 
     def process_event(self, event: dict) -> dict | None:
+        from .commands import (
+            HELP_TEXT, format_natural_result, natural_task_envelope, parse_natural_command,
+        )
+
         if event.get("chat_id") not in self.allowed_chat_ids:
             return None
         if event.get("sender_id") not in self.allowed_sender_ids:
             return None
         if event.get("message_type") != "text" or not event.get("message_id"):
             return None
-        response = self.bridge.handle_event(event)
-        if response is None:
-            return None
         reply_target = event["message_id"]
+        command = parse_natural_command(event.get("content", ""))
+        if command:
+            if command["command"] == "help" or not command["instructions"]:
+                response = {"kind": "help", "status": "succeeded"}
+                reply_text = HELP_TEXT
+            else:
+                task_event = dict(event)
+                task_event["content"] = encode_relay_message(
+                    natural_task_envelope(event, command, self.bridge.bridge_id)
+                )
+                response = self.bridge.handle_event(task_event)
+                reply_text = format_natural_result(response)
+        else:
+            response = self.bridge.handle_event(event)
+            if response is None:
+                return None
+            reply_text = encode_relay_message(response)
         delivery_key = hashlib.sha256(
             f"relay-result:{event.get('event_id') or reply_target}".encode()
         ).hexdigest()[:32]
-        self.cli.reply(reply_target, encode_relay_message(response), delivery_key)
+        self.cli.reply(reply_target, reply_text, delivery_key)
         return response
 
 
