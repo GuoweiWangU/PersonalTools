@@ -63,6 +63,12 @@ class AgentServiceTest(unittest.TestCase):
             "two", f"/continue {accepted['task_id']} second instruction",
         ))
         self.wait_turn(continued["turn_id"])
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            texts = [item[1] for item in self.cli.replies]
+            if any("second instruction" in text and "执行成功" in text for text in texts):
+                break
+            time.sleep(0.02)
         texts = [item[1] for item in self.cli.replies]
         self.assertTrue(any("已创建长期任务" in text for text in texts))
         self.assertTrue(any("second instruction" in text and "执行成功" in text for text in texts))
