@@ -1,176 +1,104 @@
-# 模型协作与飞书中继框架
+# 长期主控与多模型协作工具
 
-通用的单机多模型任务调度工具。主控通过飞书发送结构化任务，云端 Bridge 按 Worker ID 调用本机模型并回复结果。工具不依赖任何业务项目或数据集。
+通用的单机多模型任务调度工具，不依赖任何业务项目或数据集。Mac 主控可以通过飞书群把复杂工作交给云电脑；云端 Bridge 负责持久化、模型调用、受控执行、异步通知和结果验收。
 
-## 架构
+## 能力概览
+
+- `/glm`、`/kimi`：独立、一次性分析任务；`/kimi` 保持只读。
+- `/agent`、`/continue`：Kimi Code 通用执行，同一 Task 固定一个 ACP Session，多轮 Turn 恢复上下文。
+- `/goal`：持久 Goal／Plan／Step DAG，按依赖自动调度后续步骤。
+- 异步队列、心跳、取消、权限审批、资源锁、审计日志和重启恢复。
+- Artifact Manifest 独立检查真实文件，记录路径、大小和 SHA256。
+- SQLite 是状态事实来源，飞书只承担交互与通知。
+
+## 飞书命令
 
 ```text
-主控 → 飞书任务消息 → cloud-desktop-1 Bridge
-                         ├─ worker_a → 模型 A，独立上下文
-                         ├─ worker_b → 模型 B，独立上下文
-                         └─ kimi_code → Kimi Code ACP（适配器待实现）
+/agent 检查环境并生成报告
+/continue TASK-xxx 基于上次结果继续检查依赖
+/status TASK-xxx
+/logs TASK-xxx
+/tasks
+/cancel TASK-xxx
+/close TASK-xxx
+/approve TASK-xxx
+/deny TASK-xxx 不允许该操作
+
+/goal 准备数据并生成质量报告
+/glm 独立复核这个结论
+/kimi 只读分析当前目录
+/mock 测试链路
+/help
 ```
 
-- 一台机器运行一个 Bridge，模型 Worker 不分别加入飞书群。
-- `target_bridge` 决定接收机器，`assigned_worker` 决定本机 Worker。
-- 每个 Worker 只收到自己的任务 payload，不共享其他 Worker 上下文。
-- 飞书只负责传输与状态展示，SQLite 和 JSON 产物是事实来源。
-- 不通过飞书发送凭证或大型文件，只发送受控引用、任务说明和摘要。
+`/agent` 立即返回 Task 和 Turn ID，不等待工作完成。执行完成、失败、阻塞或等待审批时，Bridge 会再次回复原消息。继续任务时必须带原 Task ID；不会隐式新建 Session。
 
-## 状态与结果
+`/close` 只关闭没有活动 Turn 的 Task。运行中的 Task 先 `/cancel`，不要直接关闭。
 
-- 状态：`pending → running → succeeded／blocked／failed`。
-- 结果字段：`status、summary、artifacts、unknowns、blocking_issues`。
-- 飞书 `event_id` 防止事件重推，`idempotency_key` 防止任务重复执行。
-- API Key 只从环境变量读取，不写入任务记录。
-- 运行产物默认写入 `model_orchestration/runtime/`，不提交到 Git。
+## Goal DAG
 
-## 中继消息契约
+自然语言 `/goal` 创建一个单步骤目标。复杂计划使用 JSON：
 
-```json
-{
-  "protocol": "model-relay-v1",
-  "kind": "task",
-  "task_id": "TASK-example-001",
-  "idempotency_key": "example-task-v1",
-  "target_bridge": "cloud-desktop-1",
-  "assigned_worker": "mock",
-  "task_type": "generic",
-  "role": "smoke_tester",
-  "input_ref": "controlled-reference",
-  "instructions": "Return a mock success result"
+```text
+/goal {
+  "title": "小规模训练与评估",
+  "steps": [
+    {
+      "id": "prepare",
+      "instructions": "检查环境并准备小型数据，输出 manifest",
+      "depends_on": [],
+      "expected_artifacts": ["/absolute/path/data-manifest.json"]
+    },
+    {
+      "id": "train",
+      "instructions": "启动分钟级训练并保存检查点和指标",
+      "depends_on": ["prepare"],
+      "resources": ["gpu:h20-dev1:0"],
+      "expected_artifacts": ["/absolute/path/metrics.json"]
+    },
+    {
+      "id": "evaluate",
+      "instructions": "使用固定配置评估并生成报告",
+      "depends_on": ["train"],
+      "expected_artifacts": ["/absolute/path/evaluation.json"]
+    }
+  ]
 }
 ```
 
-Bridge 返回 `kind: "result"`，增加 `bridge_id`、`worker_id`、`error` 和五个结果字段。普通群聊、结果消息和发往其他 Bridge 的消息会被忽略，避免机器人循环回复。
+规则：
 
-## 测试
+- `depends_on` 引用同计划中的步骤 ID；循环依赖会被拒绝。
+- 前置步骤成功且产物验收通过后，才调度后续步骤。
+- `expected_artifacts` 必须是绝对路径；Worker 必须实际生成并在结果中声明这些文件。
+- `resources` 是互斥锁名称，可按机器、GPU、数据目录等约定命名。同一资源同时只分配给一个 Task。
+- Worker 总结不算独立验收；缺失、越界或不可读的产物会使 Turn／Goal 阻塞。
+
+## 权限边界
+
+- 只有白名单群和白名单发送者可以创建或控制任务。
+- `/agent` 文件与终端能力限制在 `--agent-root` 授权的目录集合内。
+- SSH 目标必须在 `--ssh-host` 白名单中；密钥由云端本机管理，不进入飞书、SQLite、日志或 Git。
+- 普通读取和授权目录内操作可自动通过；高风险删除、系统修改、Git 推送等进入显式审批。
+- 不支持或无法识别的工具默认拒绝；审批只选择 `allow_once`，不自动授予永久权限。
+- ACP 策略检查不是操作系统沙箱。云端运行账号本身的 OS 权限仍需按最小权限配置，高风险自动化应先小范围验证。
+
+## 云端安装与升级
+
+前置条件：云端已配置 `lark-cli` Bot、Kimi Code 登录和 GLM 环境变量；飞书应用已启用群消息事件。
 
 在工具仓根目录执行：
 
 ```bash
-PYTHONPATH=model_orchestration python3 -m unittest \
-  discover -s model_orchestration/tests -v
-```
-
-## 本地任务闭环
-
-```bash
-PYTHONPATH=model_orchestration python3 -m orchestrator.cli create \
-  --type generic \
-  --role smoke_tester \
-  --input-ref controlled-reference \
-  --instructions 'Return a mock success result' \
-  --worker mock
-```
-
-使用返回的 `task_id`：
-
-```bash
-PYTHONPATH=model_orchestration python3 -m orchestrator.cli run TASK_ID --worker mock
-PYTHONPATH=model_orchestration python3 -m orchestrator.cli show TASK_ID
-PYTHONPATH=model_orchestration python3 -m orchestrator.cli list
-```
-
-## 飞书 Mock Bridge
-
-前置条件：
-
-1. 飞书企业自建应用已启用机器人，配置接收群消息和机器人发消息权限。
-2. 应用已订阅 `im.message.receive_v1`，使用长连接，机器人已加入目标群。
-3. 云端安装并配置 `lark-cli`，`lark-cli auth status` 显示 Bot `ready`。
-4. 获取目标群 `chat_id` 和主控用户的 `open_id`。
-
-启动命令：
-
-```bash
-PYTHONPATH=model_orchestration python3 -m orchestrator.lark_bridge \
-  --bridge-id cloud-desktop-1 \
-  --chat-id oc_xxx \
-  --sender-open-id ou_xxx \
-  --worker mock \
-  --timeout 10m
-```
-
-然后在指定群发送纯文本 JSON 任务。Bridge 只处理白名单群、白名单发送者、文本消息及匹配的 `target_bridge`。联调时使用 `--timeout` 或 `--max-events` 做有界运行，不留无界后台进程。
-
-## 接入真实 Worker
-
-OpenAI 兼容 Worker：
-
-```bash
-export WORKER_BASE_URL='https://your-endpoint/v1'
-export WORKER_MODEL='your-model'
-export WORKER_API_KEY='...'
-PYTHONPATH=model_orchestration python3 -m orchestrator.cli run TASK_ID \
-  --worker openai --base-url "$WORKER_BASE_URL" --model "$WORKER_MODEL"
-```
-
-### GLM Worker
-
-GLM 使用 OpenAI 兼容接口，Key 只从环境变量读取。以下为云端配置示例：
-
-```bash
-read -s -p "GLM API Key: " GLM_API_KEY; echo
-export GLM_API_KEY
-
-PYTHONPATH=model_orchestration python3 -m orchestrator.lark_bridge \
-  --bridge-id cloud-desktop-1 \
-  --chat-id oc_xxx \
-  --sender-open-id ou_xxx \
-  --worker kimi_code=acp \
-  --worker glm=openai \
-  --acp-cwd /absolute/path/to/PersonalTools \
-  --openai-base-url https://open.bigmodel.cn/api/paas/v4 \
-  --openai-model glm-5.3 \
-  --openai-api-key-env GLM_API_KEY \
-  --timeout 30m
-```
-
-任务中的 `assigned_worker` 设为 `glm` 即调用 GLM。模型 ID 应与账号实际开通情况一致；API Key 不要写入命令行、仓库或飞书消息。
-
-### Kimi Code ACP Worker
-
-前置条件：云端已安装 `kimi`，并在交互式 Kimi Code 中完成 `/login`。每个任务会启动独立的 `kimi acp` 进程和会话，任务结束后清理进程，不共享其他任务上下文。
-
-```bash
-PYTHONPATH=model_orchestration python3 -m orchestrator.lark_bridge \
-  --bridge-id cloud-desktop-1 \
-  --chat-id oc_xxx \
-  --sender-open-id ou_xxx \
-  --worker mock \
-  --worker kimi_code=acp \
-  --acp-cwd /absolute/path/to/PersonalTools \
-  --acp-command kimi \
-  --acp-timeout 600 \
-  --timeout 30m
-```
-
-任务中的 `assigned_worker` 设为 `kimi_code` 即调用 Kimi Code，设为 `mock` 仍执行 Mock。当前 ACP Worker 面向只读分析任务：提示词禁止命令执行、文件修改和外部访问，客户端不开放文件系统与终端能力，并默认拒绝权限请求。后续如需开放写文件或命令执行，必须单独设计权限与审批策略。
-
-## 飞书自然语言命令
-
-启动包含相应 Worker 的 Bridge 后，在允许的群中直接发送：
-
-```text
-/glm 你的任务内容
-/kimi 你的任务内容
-/mock 测试任务
-/help
-```
-
-命令前可以 @机器人，也可以不 @。Bridge 自动生成任务 ID、幂等键和受控输入引用，执行后返回可读摘要；原有 JSON 协议仍然保留，适合程序化调用和精细控制。
-
-## 云端常驻服务
-
-Linux 用户可以安装 systemd 用户服务，避免保留前台终端。先停止手工启动的 Bridge，再执行：
-
-```bash
 CHAT_ID=oc_xxx SENDER_OPEN_ID=ou_xxx \
-  bash model_orchestration/deploy/install_user_service.sh
+AGENT_ROOTS="/absolute/project:/data0/allowed:/data3/allowed" \
+SSH_HOSTS="mentx-dev0,mentx-dev1,h20-dev0,h20-dev1" \
+bash model_orchestration/deploy/install_user_service.sh
 ```
 
-安装脚本在 `~/.config/systemd/user/` 生成服务并立即启动。服务通过登录 Shell 读取现有环境，因此 `GLM_API_KEY` 必须在该环境中可见。常用运维命令：
+`AGENT_ROOTS` 使用冒号分隔，默认只有工具仓；`SSH_HOSTS` 使用逗号分隔，默认不允许 SSH。不要把整个系统盘或包含凭证的目录不必要地加入授权根。
+
+日常运维：
 
 ```bash
 systemctl --user status personal-tools-relay.service
@@ -178,4 +106,35 @@ systemctl --user restart personal-tools-relay.service
 journalctl --user -u personal-tools-relay.service -n 100 --no-pager
 ```
 
-服务异常会自动重启。用户登录后会自动启动；如需未登录也保持运行，可由管理员配置 lingering。日常发任务不再需要终端，只有代码更新、模型配置或凭证变更时才需要运维。
+代码升级：
+
+```bash
+git pull --ff-only
+PYTHONPATH=model_orchestration python3 -m unittest \
+  discover -s model_orchestration/tests -v
+systemctl --user restart personal-tools-relay.service
+```
+
+升级不会清空 SQLite。重启时：
+
+- queued Turn 自动恢复调度。
+- 正在执行的 ACP Turn 标记为 blocked，保留原 Session，要求显式 `/continue`，不伪造成功。
+- 外部进程记录先按 PID 对账为 `detached_running` 或 `exit_unverified`，不会盲目重复启动。
+- 资源锁和未完成审批会安全复位。
+
+## 本地测试
+
+```bash
+PYTHONPATH=model_orchestration python3 -m unittest \
+  discover -s model_orchestration/tests -v
+python3 -m compileall -q model_orchestration/orchestrator
+git diff --check
+```
+
+测试覆盖 GLM 代码块解析、ACP `session/new`／`session/load`、权限请求、终端和文件反向 RPC、异步队列、飞书通知、幂等、审批、取消、重启恢复、Goal DAG、资源锁和 Artifact 校验。
+
+## 兼容旧协议
+
+原有一次性 JSON `model-relay-v1` 任务仍可用，`target_bridge` 选择机器，`assigned_worker` 选择 `mock`、`kimi_code` 或 `glm`。普通群聊、结果消息、其他 Bridge 的任务和非白名单发送者会被忽略。
+
+运行产物默认在 `model_orchestration/runtime/`，不提交 Git。API Key 只从环境读取。详细设计见 `ARCHITECTURE.md`。

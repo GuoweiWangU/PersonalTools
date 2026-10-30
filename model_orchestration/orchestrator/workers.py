@@ -27,6 +27,15 @@ def validate_result(result: dict) -> dict:
     return result
 
 
+def parse_worker_json(content: str) -> dict:
+    text = content.strip()
+    if text.startswith("```") and text.endswith("```"):
+        lines = text.splitlines()
+        if lines[0].strip().lower() in {"```", "```json"}:
+            text = "\n".join(lines[1:-1]).strip()
+    return json.loads(text)
+
+
 class MockWorker:
     """Deterministic local worker for framework tests; does not call a model."""
 
@@ -78,4 +87,4 @@ class OpenAICompatibleWorker:
         with urllib.request.urlopen(request, timeout=self.timeout) as response:
             envelope = json.load(response)
         content = envelope["choices"][0]["message"]["content"]
-        return validate_result(json.loads(content))
+        return validate_result(parse_worker_json(content))

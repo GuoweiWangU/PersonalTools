@@ -38,6 +38,15 @@ class NaturalCommandTest(unittest.TestCase):
         self.assertIn("分析完成", text)
         self.assertNotIn("protocol", text)
 
+    def test_failure_includes_actual_error(self):
+        text = format_natural_result({
+            "status": "failed", "worker_id": "glm", "task_id": "TASK-2",
+            "summary": "Worker did not produce a valid result", "unknowns": [],
+            "blocking_issues": [], "error": "JSONDecodeError: invalid response",
+        })
+        self.assertIn("错误详情", text)
+        self.assertIn("JSONDecodeError: invalid response", text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=__REPO_ROOT__
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/bin/bash -lc 'cd "__REPO_ROOT__" && PYTHONPATH=model_orchestration exec python3 -m orchestrator.lark_bridge --bridge-id cloud-desktop-1 --chat-id __CHAT_ID__ --sender-open-id __SENDER_OPEN_ID__ --worker mock --worker kimi_code=acp --worker glm=openai --acp-cwd "__REPO_ROOT__" --acp-command kimi --openai-base-url https://open.bigmodel.cn/api/paas/v4 --openai-model glm-5.3 --openai-api-key-env GLM_API_KEY'
+ExecStart=/bin/bash -lc 'cd "__REPO_ROOT__" && PYTHONPATH=model_orchestration exec python3 -m orchestrator.lark_bridge --bridge-id cloud-desktop-1 --chat-id __CHAT_ID__ --sender-open-id __SENDER_OPEN_ID__ --worker mock --worker kimi_code=acp --worker glm=openai --acp-cwd "__REPO_ROOT__" --acp-command kimi --openai-base-url https://open.bigmodel.cn/api/paas/v4 --openai-model glm-5.3 --openai-api-key-env GLM_API_KEY__AGENT_ARGS__'
 Restart=always
 RestartSec=5
 TimeoutStopSec=20

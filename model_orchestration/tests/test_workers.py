@@ -40,6 +40,21 @@ class OpenAICompatibleWorkerTest(unittest.TestCase):
         self.assertNotIn("response_format", body)
         self.assertEqual(output["summary"], "GLM test completed")
 
+    def test_json_code_fence_is_accepted(self):
+        result = {
+            "status": "succeeded", "summary": "Fenced GLM result",
+            "artifacts": [], "unknowns": [], "blocking_issues": []
+        }
+        content = "```json\n" + json.dumps(result) + "\n```"
+        envelope = {"choices": [{"message": {"content": content}}]}
+        with patch.dict("os.environ", {"GLM_API_KEY": "test-secret"}):
+            with patch("urllib.request.urlopen", return_value=FakeResponse(envelope)):
+                worker = OpenAICompatibleWorker(
+                    "https://open.bigmodel.cn/api/paas/v4", "glm-5.3", "GLM_API_KEY"
+                )
+                output = worker.run({"task_id": "TASK-glm-fence"})
+        self.assertEqual(output["summary"], "Fenced GLM result")
+
 
 if __name__ == "__main__":
     unittest.main()
